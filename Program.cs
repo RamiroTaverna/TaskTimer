@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data.SQLite;
 using System.Diagnostics;
+using System.Threading;
 
 class Program
 {
@@ -13,7 +14,7 @@ class Program
         while (true)
         {
             Console.Clear();
-            Console.WriteLine("RAMA | TaskTimer v0.0.1");
+            Console.WriteLine("RAMA | TaskTimer v0.0.2");
             Console.WriteLine();
             Console.WriteLine("Menú:");
             Console.WriteLine("1. Crear tarea");
@@ -29,7 +30,7 @@ class Program
                 case "2": SeleccionarTarea(); break;
                 case "3": EliminarTarea(); break;
                 case "4": return;
-                default: Console.WriteLine("Opción no válida"); break;
+                default: Console.WriteLine("Opción no válida"); Console.ReadKey(); break;
             }
         }
     }
@@ -78,7 +79,7 @@ class Program
         Console.WriteLine("Seleccione una tarea:");
         for (int i = 0; i < tareas.Count; i++)
         {
-            Console.WriteLine($"{i + 1}. {tareas[i].Item2} (Tiempo: {tareas[i].Item3} seg)");
+            Console.WriteLine($"{i + 1}. {tareas[i].Item2} (Tiempo: {FormatoTiempo(tareas[i].Item3)})");
         }
 
         if (int.TryParse(Console.ReadLine(), out int seleccion) && seleccion > 0 && seleccion <= tareas.Count)
@@ -113,9 +114,21 @@ class Program
 
     static void IniciarContador(int id, string nombre, int tiempoInicial)
     {
+        Console.Clear();
         Console.WriteLine($"Iniciando tarea: {nombre}");
         Stopwatch sw = new Stopwatch();
         sw.Start();
+
+        Thread thread = new Thread(() => {
+            while (sw.IsRunning)
+            {
+                Console.SetCursorPosition(0, 2);
+                Console.WriteLine($"Tiempo en sesión: {FormatoTiempo((int)sw.Elapsed.TotalSeconds)}   ");
+                Thread.Sleep(1000);
+            }
+        });
+        thread.Start();
+
         Console.WriteLine("Presione cualquier tecla para detener...");
         Console.ReadKey();
         sw.Stop();
@@ -132,8 +145,17 @@ class Program
                 cmd.ExecuteNonQuery();
             }
         }
-        Console.WriteLine($"Tiempo registrado: {tiempoTotal} segundos. Presione una tecla para continuar...");
+
+        Console.WriteLine($"Tiempo total registrado: {FormatoTiempo(tiempoTotal)}. Presione una tecla para continuar...");
         Console.ReadKey();
+    }
+
+    static string FormatoTiempo(int segundos)
+    {
+        int horas = segundos / 3600;
+        int minutos = (segundos % 3600) / 60;
+        int seg = segundos % 60;
+        return $"{horas:D2}:{minutos:D2}:{seg:D2}";
     }
 
     static void EliminarTarea()
@@ -149,7 +171,7 @@ class Program
         Console.WriteLine("Seleccione una tarea para eliminar:");
         for (int i = 0; i < tareas.Count; i++)
         {
-            Console.WriteLine($"{i + 1}. {tareas[i].Item2} (Tiempo: {tareas[i].Item3} seg)");
+            Console.WriteLine($"{i + 1}. {tareas[i].Item2} (Tiempo: {FormatoTiempo(tareas[i].Item3)})");
         }
 
         if (int.TryParse(Console.ReadLine(), out int seleccion) && seleccion > 0 && seleccion <= tareas.Count)
