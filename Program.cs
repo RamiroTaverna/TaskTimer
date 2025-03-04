@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Data.SQLite;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 
 class Program
@@ -11,17 +10,17 @@ class Program
     static string dbFile = "tareas.db";
     static string connectionString = $"Data Source={dbFile};Version=3;";
 
-    static void Main()
+    static async Task Main()
     {
         if (!File.Exists(dbFile))
         {
-            CrearBaseDeDatos();
+            await CrearBaseDeDatosAsync();
         }
 
         while (true)
         {
             Console.Clear();
-            programName();
+            MostrarNombrePrograma();
             Console.WriteLine();
             Console.WriteLine("Gestor de Tareas");
             Console.WriteLine("1. Agregar Tarea");
@@ -30,19 +29,20 @@ class Program
             Console.WriteLine("4. Eliminar Tarea");
             Console.WriteLine("5. Salir");
 
-            switch (Console.ReadLine())
+            string opcion = Console.ReadLine();
+            switch (opcion)
             {
                 case "1":
-                    AgregarTarea();
+                    await AgregarTareaAsync();
                     break;
                 case "2":
-                    SeleccionarTarea();
+                    await SeleccionarTareaAsync();
                     break;
                 case "3":
-                    MostrarTareas();
+                    await MostrarTareasAsync();
                     break;
                 case "4":
-                    EliminarTarea();
+                    await EliminarTareaAsync();
                     break;
                 case "5":
                     return;
@@ -54,74 +54,93 @@ class Program
         }
     }
 
-    static void CrearBaseDeDatos()
+    static async Task CrearBaseDeDatosAsync()
     {
-        using (var conn = new SQLiteConnection(connectionString))
+        try
         {
-            conn.Open();
-
-            string sqlTareas = "CREATE TABLE IF NOT EXISTS tareas (id INTEGER PRIMARY KEY, nombre TEXT, tiempo INTEGER)";
-            using (var cmd = new SQLiteCommand(sqlTareas, conn))
+            using (var conn = new SQLiteConnection(connectionString))
             {
-                cmd.ExecuteNonQuery();
-            }
+                await conn.OpenAsync();
 
-            string sqlSesiones = "CREATE TABLE IF NOT EXISTS sesiones (id INTEGER PRIMARY KEY AUTOINCREMENT, id_tarea INTEGER, fecha TEXT, duracion TEXT, FOREIGN KEY(id_tarea) REFERENCES tareas(id))";
-            using (var cmd = new SQLiteCommand(sqlSesiones, conn))
-            {
-                cmd.ExecuteNonQuery();
+                string sqlTareas = "CREATE TABLE IF NOT EXISTS tareas (id INTEGER PRIMARY KEY, nombre TEXT, tiempo INTEGER)";
+                await EjecutarComandoAsync(conn, sqlTareas);
+
+                string sqlSesiones = "CREATE TABLE IF NOT EXISTS sesiones (id INTEGER PRIMARY KEY AUTOINCREMENT, id_tarea INTEGER, fecha TEXT, duracion TEXT, FOREIGN KEY(id_tarea) REFERENCES tareas(id))";
+                await EjecutarComandoAsync(conn, sqlSesiones);
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al crear la base de datos: {ex.Message}");
         }
     }
 
-    static void AgregarTarea()
+    static async Task AgregarTareaAsync()
     {
         Console.Clear();
-        programName();
+        MostrarNombrePrograma();
         Console.Write("Ingrese el nombre de la tarea: ");
         string nombre = Console.ReadLine();
 
-        using (var conn = new SQLiteConnection(connectionString))
+        if (string.IsNullOrWhiteSpace(nombre))
         {
-            conn.Open();
-            string sql = "INSERT INTO tareas (nombre, tiempo) VALUES (@nombre, 0)";
-            using (var cmd = new SQLiteCommand(sql, conn))
-            {
-                cmd.Parameters.AddWithValue("@nombre", nombre);
-                cmd.ExecuteNonQuery();
-            }
+            Console.WriteLine("El nombre de la tarea no puede estar vacío.");
+            Console.ReadKey();
+            return;
         }
 
-        Console.WriteLine("Tarea agregada correctamente.");
+        try
+        {
+            using (var conn = new SQLiteConnection(connectionString))
+            {
+                await conn.OpenAsync();
+                string sql = "INSERT INTO tareas (nombre, tiempo) VALUES (@nombre, 0)";
+                await EjecutarComandoAsync(conn, sql, new SQLiteParameter("@nombre", nombre));
+            }
+
+            Console.WriteLine("Tarea agregada correctamente.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al agregar la tarea: {ex.Message}");
+        }
+
         Console.ReadKey();
     }
 
-    static List<(int, string, int)> ObtenerTareas()
+    static async Task<List<(int, string, int)>> ObtenerTareasAsync()
     {
         var tareas = new List<(int, string, int)>();
-        using (var conn = new SQLiteConnection(connectionString))
+        try
         {
-            conn.Open();
-            string sql = "SELECT id, nombre, tiempo FROM tareas";
-            using (var cmd = new SQLiteCommand(sql, conn))
+            using (var conn = new SQLiteConnection(connectionString))
             {
-                using (var reader = cmd.ExecuteReader())
+                await conn.OpenAsync();
+                string sql = "SELECT id, nombre, tiempo FROM tareas";
+                using (var cmd = new SQLiteCommand(sql, conn))
                 {
-                    while (reader.Read())
+                    using (var reader = await cmd.ExecuteReaderAsync())
                     {
-                        tareas.Add((reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2)));
+                        while (await reader.ReadAsync())
+                        {
+                            tareas.Add((reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2)));
+                        }
                     }
                 }
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al obtener las tareas: {ex.Message}");
+        }
         return tareas;
     }
 
-    static void MostrarTareas()
+    static async Task MostrarTareasAsync()
     {
         Console.Clear();
-        programName();
-        List<(int, string, int)> tareas = ObtenerTareas();
+        MostrarNombrePrograma();
+        var tareas = await ObtenerTareasAsync();
         if (tareas.Count == 0)
         {
             Console.WriteLine("No hay tareas disponibles.");
@@ -136,13 +155,13 @@ class Program
         Console.ReadKey();
     }
 
-    static void SeleccionarTarea()
+    static async Task SeleccionarTareaAsync()
     {
-        List<(int, string, int)> tareas = ObtenerTareas();
+        var tareas = await ObtenerTareasAsync();
         if (tareas.Count == 0)
         {
             Console.Clear();
-            programName();
+            MostrarNombrePrograma();
             Console.WriteLine("No hay tareas disponibles.");
             Console.ReadKey();
             return;
@@ -161,10 +180,10 @@ class Program
             int tiempoPrevio = tareas[seleccion - 1].Item3;
 
             Console.Clear();
-            programName();
+            MostrarNombrePrograma();
             Console.WriteLine($"Tarea: {nombreTarea}");
             Console.WriteLine("Sesiones previas:");
-            List<string> sesiones = ObtenerSesiones(idTarea);
+            var sesiones = await ObtenerSesionesAsync(idTarea);
             if (sesiones.Count > 0)
             {
                 foreach (var sesion in sesiones)
@@ -180,7 +199,7 @@ class Program
             Console.WriteLine("\nPresione una tecla para iniciar la sesión...");
             Console.ReadKey();
 
-            IniciarContador(idTarea, nombreTarea, tiempoPrevio);
+            await IniciarContadorAsync(idTarea, nombreTarea, tiempoPrevio);
         }
         else
         {
@@ -189,47 +208,53 @@ class Program
         }
     }
 
-    static List<string> ObtenerSesiones(int idTarea)
+    static async Task<List<string>> ObtenerSesionesAsync(int idTarea)
     {
         var sesiones = new List<string>();
-        using (var conn = new SQLiteConnection(connectionString))
+        try
         {
-            conn.Open();
-            string sql = "SELECT fecha, duracion FROM sesiones WHERE id_tarea = @id_tarea ORDER BY fecha DESC";
-            using (var cmd = new SQLiteCommand(sql, conn))
+            using (var conn = new SQLiteConnection(connectionString))
             {
-                cmd.Parameters.AddWithValue("@id_tarea", idTarea);
-                using (var reader = cmd.ExecuteReader())
+                await conn.OpenAsync();
+                string sql = "SELECT fecha, duracion FROM sesiones WHERE id_tarea = @id_tarea ORDER BY fecha DESC";
+                using (var cmd = new SQLiteCommand(sql, conn))
                 {
-                    while (reader.Read())
+                    cmd.Parameters.AddWithValue("@id_tarea", idTarea);
+                    using (var reader = await cmd.ExecuteReaderAsync())
                     {
-                        string fecha = reader.GetString(0);
-                        string duracion = reader.GetString(1);
-                        sesiones.Add($"[{fecha}] | Sesión: {duracion}");
+                        while (await reader.ReadAsync())
+                        {
+                            string fecha = reader.GetString(0);
+                            string duracion = reader.GetString(1);
+                            sesiones.Add($"[{fecha}] | Sesión: {duracion}");
+                        }
                     }
                 }
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al obtener las sesiones: {ex.Message}");
+        }
         return sesiones;
     }
 
-    static void IniciarContador(int id, string nombre, int tiempoInicial)
+    static async Task IniciarContadorAsync(int id, string nombre, int tiempoInicial)
     {
         Console.Clear();
-        programName();
+        MostrarNombrePrograma();
         Console.WriteLine($"Iniciando tarea: {nombre}");
         Stopwatch sw = new Stopwatch();
         sw.Start();
 
-        // Iniciar la tarea que actualiza el tiempo en sesión
         var updateTask = Task.Run(async () => {
             while (sw.IsRunning)
             {
-                Console.SetCursorPosition(0, 2); // Posicionar el cursor en la fila 2
-                Console.Write(new string(' ', Console.WindowWidth)); // Limpiar la línea
-                Console.SetCursorPosition(0, 2); // Volver a posicionar el cursor
+                Console.SetCursorPosition(0, 2);
+                Console.Write(new string(' ', Console.WindowWidth));
+                Console.SetCursorPosition(0, 2);
                 Console.WriteLine($"Tiempo en sesión: {FormatoTiempo((int)sw.Elapsed.TotalSeconds)}");
-                await Task.Delay(1000); // Esperar 1 segundo
+                await Task.Delay(1000);
             }
         });
 
@@ -242,29 +267,26 @@ class Program
         string duracionSesion = FormatoTiempo((int)sw.Elapsed.TotalSeconds);
         string fechaSesion = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
 
-        using (var conn = new SQLiteConnection(connectionString))
+        try
         {
-            conn.Open();
-
-            string sqlUpdate = "UPDATE tareas SET tiempo = @tiempo WHERE id = @id";
-            using (var cmd = new SQLiteCommand(sqlUpdate, conn))
+            using (var conn = new SQLiteConnection(connectionString))
             {
-                cmd.Parameters.AddWithValue("@tiempo", tiempoTotal);
-                cmd.Parameters.AddWithValue("@id", id);
-                cmd.ExecuteNonQuery();
+                await conn.OpenAsync();
+
+                string sqlUpdate = "UPDATE tareas SET tiempo = @tiempo WHERE id = @id";
+                await EjecutarComandoAsync(conn, sqlUpdate, new SQLiteParameter("@tiempo", tiempoTotal), new SQLiteParameter("@id", id));
+
+                string sqlInsert = "INSERT INTO sesiones (id_tarea, fecha, duracion) VALUES (@id_tarea, @fecha, @duracion)";
+                await EjecutarComandoAsync(conn, sqlInsert, new SQLiteParameter("@id_tarea", id), new SQLiteParameter("@fecha", fechaSesion), new SQLiteParameter("@duracion", duracionSesion));
             }
 
-            string sqlInsert = "INSERT INTO sesiones (id_tarea, fecha, duracion) VALUES (@id_tarea, @fecha, @duracion)";
-            using (var cmd = new SQLiteCommand(sqlInsert, conn))
-            {
-                cmd.Parameters.AddWithValue("@id_tarea", id);
-                cmd.Parameters.AddWithValue("@fecha", fechaSesion);
-                cmd.Parameters.AddWithValue("@duracion", duracionSesion);
-                cmd.ExecuteNonQuery();
-            }
+            Console.WriteLine($"Tiempo total registrado: {FormatoTiempo(tiempoTotal)}. Presione una tecla para continuar...");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al registrar la sesión: {ex.Message}");
         }
 
-        Console.WriteLine($"Tiempo total registrado: {FormatoTiempo(tiempoTotal)}. Presione una tecla para continuar...");
         Console.ReadKey();
     }
 
@@ -274,19 +296,19 @@ class Program
         return $"{t.Hours:D2}:{t.Minutes:D2}:{t.Seconds:D2}";
     }
 
-    static void programName()
+    static void MostrarNombrePrograma()
     {
         string nombre = "RAMA | TASKTIMER";
         Console.WriteLine(nombre);
         Console.WriteLine();
     }
 
-    static void EliminarTarea()
+    static async Task EliminarTareaAsync()
     {
         Console.Clear();
-        programName();
+        MostrarNombrePrograma();
 
-        List<(int, string, int)> tareas = ObtenerTareas();
+        var tareas = await ObtenerTareasAsync();
         if (tareas.Count == 0)
         {
             Console.WriteLine("No hay tareas para eliminar.");
@@ -305,7 +327,6 @@ class Program
             int idTarea = tareas[seleccion - 1].Item1;
             string nombreTarea = tareas[seleccion - 1].Item2;
 
-            // Confirmación antes de eliminar
             Console.Write($"\n¿Está seguro de que desea eliminar la tarea '{nombreTarea}'? (S/N): ");
             string respuesta = Console.ReadLine().Trim().ToUpper();
 
@@ -316,36 +337,35 @@ class Program
                 return;
             }
 
-            using (var conn = new SQLiteConnection(connectionString))
+            try
             {
-                conn.Open();
-                using (var transaction = conn.BeginTransaction()) // Se usa transacción para asegurar atomicidad
+                using (var conn = new SQLiteConnection(connectionString))
                 {
-                    try
+                    await conn.OpenAsync();
+                    using (var transaction = conn.BeginTransaction())
                     {
-                        // Eliminar sesiones asociadas a la tarea
-                        using (var cmdSesiones = new SQLiteCommand("DELETE FROM sesiones WHERE id_tarea = @id_tarea", conn, transaction))
+                        try
                         {
-                            cmdSesiones.Parameters.AddWithValue("@id_tarea", idTarea);
-                            cmdSesiones.ExecuteNonQuery();
-                        }
+                            string sqlDeleteSesiones = "DELETE FROM sesiones WHERE id_tarea = @id_tarea";
+                            await EjecutarComandoAsync(conn, sqlDeleteSesiones, transaction, new SQLiteParameter("@id_tarea", idTarea));
 
-                        // Eliminar la tarea
-                        using (var cmdTareas = new SQLiteCommand("DELETE FROM tareas WHERE id = @id", conn, transaction))
+                            string sqlDeleteTarea = "DELETE FROM tareas WHERE id = @id";
+                            await EjecutarComandoAsync(conn, sqlDeleteTarea, transaction, new SQLiteParameter("@id", idTarea));
+
+                            transaction.Commit();
+                            Console.WriteLine("Tarea eliminada correctamente.");
+                        }
+                        catch (Exception ex)
                         {
-                            cmdTareas.Parameters.AddWithValue("@id", idTarea);
-                            cmdTareas.ExecuteNonQuery();
+                            transaction.Rollback();
+                            Console.WriteLine($"Error al eliminar la tarea: {ex.Message}");
                         }
-
-                        transaction.Commit(); // Se confirman los cambios
-                        Console.WriteLine("Tarea eliminada correctamente.");
-                    }
-                    catch (Exception ex)
-                    {
-                        transaction.Rollback(); // Revertir cambios en caso de error
-                        Console.WriteLine($"Error al eliminar la tarea: {ex.Message}");
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al conectar con la base de datos: {ex.Message}");
             }
         }
         else
@@ -355,5 +375,23 @@ class Program
         Console.ReadKey();
     }
 
+    // Método para ejecutar comandos sin transacción
+    static async Task EjecutarComandoAsync(SQLiteConnection conn, string sql, params SQLiteParameter[] parameters)
+    {
+        using (var cmd = new SQLiteCommand(sql, conn))
+        {
+            cmd.Parameters.AddRange(parameters);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
 
+    // Método para ejecutar comandos con transacción
+    static async Task EjecutarComandoAsync(SQLiteConnection conn, string sql, SQLiteTransaction transaction, params SQLiteParameter[] parameters)
+    {
+        using (var cmd = new SQLiteCommand(sql, conn, transaction))
+        {
+            cmd.Parameters.AddRange(parameters);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
 }
