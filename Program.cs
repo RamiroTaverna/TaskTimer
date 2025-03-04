@@ -302,17 +302,51 @@ class Program
 
         if (int.TryParse(Console.ReadLine(), out int seleccion) && seleccion > 0 && seleccion <= tareas.Count)
         {
+            int idTarea = tareas[seleccion - 1].Item1;
+            string nombreTarea = tareas[seleccion - 1].Item2;
+
+            // Confirmación antes de eliminar
+            Console.Write($"\n¿Está seguro de que desea eliminar la tarea '{nombreTarea}'? (S/N): ");
+            string respuesta = Console.ReadLine().Trim().ToUpper();
+
+            if (respuesta != "S")
+            {
+                Console.WriteLine("Eliminación cancelada.");
+                Console.ReadKey();
+                return;
+            }
+
             using (var conn = new SQLiteConnection(connectionString))
             {
                 conn.Open();
-                string sql = "DELETE FROM tareas WHERE id = @id";
-                using (var cmd = new SQLiteCommand(sql, conn))
+                using (var transaction = conn.BeginTransaction()) // Se usa transacción para asegurar atomicidad
                 {
-                    cmd.Parameters.AddWithValue("@id", tareas[seleccion - 1].Item1);
-                    cmd.ExecuteNonQuery();
+                    try
+                    {
+                        // Eliminar sesiones asociadas a la tarea
+                        using (var cmdSesiones = new SQLiteCommand("DELETE FROM sesiones WHERE id_tarea = @id_tarea", conn, transaction))
+                        {
+                            cmdSesiones.Parameters.AddWithValue("@id_tarea", idTarea);
+                            cmdSesiones.ExecuteNonQuery();
+                        }
+
+                        // Eliminar la tarea
+                        using (var cmdTareas = new SQLiteCommand("DELETE FROM tareas WHERE id = @id", conn, transaction))
+                        {
+                            cmdTareas.Parameters.AddWithValue("@id", idTarea);
+                            cmdTareas.ExecuteNonQuery();
+                        }
+
+                        transaction.Commit(); // Se confirman los cambios
+                        Console.WriteLine("Tarea eliminada correctamente.");
+                    }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback(); // Revertir cambios en caso de error
+                        Console.WriteLine($"Error al eliminar la tarea: {ex.Message}");
+                    }
                 }
             }
-            Console.WriteLine("Tarea eliminada.");
         }
         else
         {
@@ -320,4 +354,6 @@ class Program
         }
         Console.ReadKey();
     }
+
+
 }
