@@ -360,14 +360,26 @@ class Program
         string fechaSesion = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
         idSesionActiva = await CrearSesionAsync(id, fechaSesion);
 
-        bool guardadoAutomatico = true;
-        //Console.WriteLine("¿Desea activar el guardado automático? (S/N)");
-        //if (Console.ReadLine().Trim().ToUpper() == "S")
-        //{
-        //    guardadoAutomatico = true;
-        //}
+        bool guardadoAutomatico = false;
+        int intervaloGuardado = 10000; // Valor por defecto: 10 segundos
+        Console.WriteLine("¿Desea activar el guardado automático? (S/N)");
+        if (Console.ReadLine().Trim().ToUpper() == "S")
+        {
+            Console.WriteLine("Guardado automático activado. ¿Cada cuántos segundos desea guardar? (por defecto: 10)");
+            if (int.TryParse(Console.ReadLine(), out int intervalo))
+            {
+                intervaloGuardado = intervalo * 1000; // Convertir a milisegundos
+            }
+            Console.WriteLine($"Guardado automático activado cada {intervaloGuardado / 1000} segundos.");
+            guardadoAutomatico = true;
+        }
+        else
+        {
+            Console.WriteLine("Guardado automático desactivado. Recuerda que si se apaga el PC o cierras el programa, no se guardará el tiempo transcurrido.");
+        }
 
-        var guardarTask = Task.Run(async () => {
+        var guardarTask = Task.Run(async () =>
+        {
             while (sw.IsRunning)
             {
                 if (guardadoAutomatico)
@@ -375,34 +387,19 @@ class Program
                     int duracion = (int)sw.Elapsed.TotalSeconds; // Obtener el tiempo transcurrido
                     await GuardarTiempoSesionAsync(idSesionActiva, idTareaActiva, duracion);
                 }
-                await Task.Delay(10000); // Guardar cada 10 segundos
+                await Task.Delay(intervaloGuardado); // Guardar cada X segundos
             }
         });
 
         bool pausado = false;
-        Console.WriteLine("Presione 'P' para pausar/reanudar, o cualquier otra tecla para detener...");
-        Console.WriteLine("Corriendo...");
+        Console.WriteLine("Presione 'P' para pausar/reanudar, 'C' para cancelar sin guardar, o cualquier otra tecla para detener y guardar...");
+        Console.WriteLine($"Corriendo... Tiempo transcurrido: {FormatoTiempo((int)sw.Elapsed.TotalSeconds)}");
         while (true)
         {
             if (Console.KeyAvailable)
             {
                 var key = Console.ReadKey(true).Key;
-                if (key == ConsoleKey.P)
-                {
-                    if (pausado)
-                    {
-                        sw.Start();
-                        pausado = false;
-                        Console.WriteLine("Corriendo...");
-                    }
-                    else
-                    {
-                        sw.Stop();
-                        pausado = true;
-                        Console.WriteLine("En pausa...");
-                    }
-                }
-                else
+                if (!ManejarTecla(key, ref pausado, sw))
                 {
                     break;
                 }
@@ -419,9 +416,38 @@ class Program
         int tiempoTotal = tiempoPrevio + duracionSesion;
         await ActualizarTiempoTareaAsync(idTareaActiva, tiempoTotal);
 
-        Console.WriteLine($"Tiempo de sesion: {FormatoTiempo(duracionSesion)}");
+        Console.WriteLine($"Tiempo de sesión: {FormatoTiempo(duracionSesion)}");
         Console.WriteLine($"Tiempo total registrado: {FormatoTiempo(tiempoTotal)}. Presione una tecla para continuar...");
         Console.ReadKey();
+    }
+
+    private static bool ManejarTecla(ConsoleKey key, ref bool pausado, Stopwatch sw)
+    {
+        if (key == ConsoleKey.P)
+        {
+            if (pausado)
+            {
+                sw.Start();
+                pausado = false;
+                Console.WriteLine($"Corriendo... Tiempo transcurrido: {FormatoTiempo((int)sw.Elapsed.TotalSeconds)}");
+            }
+            else
+            {
+                sw.Stop();
+                pausado = true;
+                Console.WriteLine("En pausa...");
+            }
+            return true; // Continuar el bucle
+        }
+        else if (key == ConsoleKey.C)
+        {
+            Console.WriteLine("Sesión cancelada. No se guardará el tiempo transcurrido.");
+            return false; // Salir sin guardar
+        }
+        else
+        {
+            return false; // Salir y guardar
+        }
     }
 
     static async Task<int> CrearSesionAsync(int idTarea, string fecha)
